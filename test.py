@@ -105,6 +105,7 @@ def process_query(query, similar_records, system_instruction):
     callback_manager = CallbackManager([tracer])
 
     llm = ChatOpenAI(
+        model_name="gpt-4o-mini", 
         temperature=0,
         openai_api_key=OPENAI_API_KEY,
         callbacks=callback_manager
