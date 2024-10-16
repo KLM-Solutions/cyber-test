@@ -1,0 +1,7 @@
+streamlit
+langchain
+langchain-openai
+langchain-community
+openai
+psycopg2-binary
+langsmith
