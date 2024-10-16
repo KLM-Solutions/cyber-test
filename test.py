@@ -7,17 +7,13 @@ import psycopg2
 import traceback 
 from langsmith import trace
 
-# Set up API keys and configuration using Streamlit secrets
-OPENAI_API_KEY = st.secrets["openai"]["api_key"]
-NEON_DB_URL = st.secrets["neon"]["database_url"]
-LANGCHAIN_API_KEY = st.secrets["langsmith"]["api_key"]
-LANGSMITH_PROJECT_NAME = st.secrets["langsmith"]["project_name"] 
+OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
+NEON_DB_URL = st.secrets["NEON_DB_URL"]
+LANGCHAIN_API_KEY = st.secrets["LANGCHAIN_API_KEY"]
+LANGCHAIN_PROJECT = st.secrets["LANGCHAIN_PROJECT"]
 
+st.secrets["LANGCHAIN_TRACING_V2"] = "true"
 
-# Configure LangSmith
-["LANGCHAIN_TRACING_V2"] = "true"
-st.secrets["LANGCHAIN_API_KEY"] = LANGCHAIN_API_KEY
-st.secrets["LANGCHAIN_PROJECT"] = LANGSMITH_PROJECT_NAME 
 
 # Constants
 TABLE_NAME = 'cyber'
