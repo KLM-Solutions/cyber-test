@@ -105,9 +105,9 @@ def process_query(query, similar_records, system_instruction):
     callback_manager = CallbackManager([tracer])
 
     llm = ChatOpenAI(
-        openai_api_key=OPENAI_API_KEY, 
-        model_name="gpt-4o-mini",
-        callbacks=[callback_manager]
+        temperature=0,
+        openai_api_key=OPENAI_API_KEY,
+        callbacks=callback_manager
     )
     
     template = ChatPromptTemplate.from_messages([
@@ -135,7 +135,6 @@ def process_query(query, similar_records, system_instruction):
 
     response = chain.run(query=query, records=records_text)
     return response
-
 def main():
     st.title("Cybersecurity Incident Query System")
 
