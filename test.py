@@ -15,7 +15,7 @@ LANGSMITH_PROJECT_NAME = st.secrets["langsmith"]["project_name"]
 
 
 # Configure LangSmith
-st.secrets["LANGCHAIN_TRACING_V2"] = "true"
+["LANGCHAIN_TRACING_V2"] = "true"
 st.secrets["LANGCHAIN_API_KEY"] = LANGCHAIN_API_KEY
 st.secrets["LANGCHAIN_PROJECT"] = LANGSMITH_PROJECT_NAME 
 
