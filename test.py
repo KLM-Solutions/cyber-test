@@ -5,7 +5,7 @@ from langchain.prompts import ChatPromptTemplate
 from langchain.chains import LLMChain
 import psycopg2
 import traceback 
-from langsmith import trace
+from langsmith import trace, client
 
 OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
 NEON_DB_URL = st.secrets["NEON_DB_URL"]
