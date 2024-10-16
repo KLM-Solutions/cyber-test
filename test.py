@@ -5,16 +5,18 @@ from langchain.prompts import ChatPromptTemplate
 from langchain.chains import LLMChain
 import psycopg2
 import traceback 
-from langsmith import trace as langsmith_trace
+from langsmith import Client
+from langchain.callbacks.tracers import LangChainTracer
+from langchain.callbacks.manager import CallbackManager
 
-OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
-NEON_DB_URL = st.secrets["NEON_DB_URL"]
-LANGCHAIN_API_KEY = st.secrets["LANGCHAIN_API_KEY"]
-LANGCHAIN_PROJECT = st.secrets["LANGCHAIN_PROJECT"]
+OPENAI_API_KEY = st.secrets["openai"]["api_key"]
+# Neon database connection string
+NEON_DB_URL = st.secrets["neon"]["database_url"]
 
-LANGCHAIN_TRACING_V2 = "true"
+# LangSmith configuration
+LANGCHAIN_API_KEY = st.secrets["langsmith"]["api_key"]
+LANGCHAIN_PROJECT = "cyber incident"  
 
-# Constants
 TABLE_NAME = 'cyber'
 EMBEDDING_MODEL = "text-embedding-ada-002"
 
@@ -61,12 +63,12 @@ DEFAULT_SYSTEM_INSTRUCTION = """You are an AI assistant specialized in cybersecu
 
 Your response should be informative, actionable, and directly relevant to the specific query and the data provided. Focus on giving insights and recommendations that are most pertinent to the user's question."""
 
+# Initialize LangSmith client
+langsmith_client = Client(api_key=LANGCHAIN_API_KEY)
 
-@langsmith_trace(name="query_similar_records", project_name=LANGCHAIN_PROJECT)
 def query_similar_records(query_text, k=5):
-    langsmith_trace.add_metadata({"data_source": "Neon Database"})
     embeddings = OpenAIEmbeddings(
-        openai_api_key=OPENAI_API_KEY,
+        openai_api_key=st.secrets["openai"]["api_key"],
         model=EMBEDDING_MODEL
     )
     query_embedding = embeddings.embed_query(query_text)
@@ -98,10 +100,15 @@ def query_similar_records(query_text, k=5):
         if 'conn' in locals():
             conn.close()
 
-@langsmith_trace(name="process_query", project_name=LANGCHAIN_PROJECT)
 def process_query(query, similar_records, system_instruction):
-    langsmith_trace.add_metadata({"query_type": "cybersecurity_incident"})
-    llm = ChatOpenAI(openai_api_key=OPENAI_API_KEY, model_name="gpt-4o-mini")
+    tracer = LangChainTracer(project_name=LANGCHAIN_PROJECT)
+    callback_manager = CallbackManager([tracer])
+
+    llm = ChatOpenAI(
+        openai_api_key=OPENAI_API_KEY, 
+        model_name="gpt-4o-mini",
+        callbacks=[callback_manager]
+    )
     
     template = ChatPromptTemplate.from_messages([
         ("system", system_instruction),
@@ -116,7 +123,7 @@ def process_query(query, similar_records, system_instruction):
         """)
     ])
 
-    chain = LLMChain(llm=llm, prompt=template)
+    chain = LLMChain(llm=llm, prompt=template, callbacks=[callback_manager])
     
     records_text = ""
     for record in similar_records:
@@ -163,16 +170,15 @@ def main():
 
     if query:  # Process query as soon as it's entered
         with st.spinner("Processing your query..."):
-            with langsmith_trace(name="main_query_processing", project_name=LANGCHAIN_PROJECT):
-                similar_records = query_similar_records(query)
+            similar_records = query_similar_records(query)
+            
+            if similar_records:
+                response = process_query(query, similar_records, st.session_state.get('system_instruction', DEFAULT_SYSTEM_INSTRUCTION))
                 
-                if similar_records:
-                    response = process_query(query, similar_records, st.session_state.get('system_instruction', DEFAULT_SYSTEM_INSTRUCTION))
-                    
-                    st.subheader("Analysis and Recommendations:")
-                    st.write(response)
-                else:
-                    st.warning("No relevant information found for the given query.")
+                st.subheader("Analysis and Recommendations:")
+                st.write(response)
+            else:
+                st.warning("No relevant information found for the given query.")
 
 if __name__ == "__main__":
     main()
