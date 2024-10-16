@@ -12,7 +12,7 @@ NEON_DB_URL = st.secrets["NEON_DB_URL"]
 LANGCHAIN_API_KEY = st.secrets["LANGCHAIN_API_KEY"]
 LANGCHAIN_PROJECT = st.secrets["LANGCHAIN_PROJECT"]
 
-st.secrets["LANGCHAIN_TRACING_V2"] = "true"
+LANGCHAIN_TRACING_V2 = "true"
 
 
 # Constants
