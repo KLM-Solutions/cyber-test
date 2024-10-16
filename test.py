@@ -102,7 +102,7 @@ def query_similar_records(query_text, k=5):
 @trace(name="process_query", project_name=LANGCHAIN_PROJECT)
 def process_query(query, similar_records, system_instruction):
     trace.add_metadata({"query_type": "cybersecurity_incident"})
-    llm = ChatOpenAI(openai_api_key=OPENAI_API_KEY, model_name="gpt-4-mini")
+    llm = ChatOpenAI(openai_api_key=OPENAI_API_KEY, model_name="gpt-4o-mini")
     
     template = ChatPromptTemplate.from_messages([
         ("system", system_instruction),
