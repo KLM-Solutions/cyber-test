@@ -13,7 +13,8 @@ LANGCHAIN_API_KEY = st.secrets["LANGCHAIN_API_KEY"]
 LANGCHAIN_PROJECT = st.secrets["LANGCHAIN_PROJECT"]
 
 LANGCHAIN_TRACING_V2 = "true"
-
+# Initialize LangSmith client
+langsmith_client = Client()
 
 # Constants
 TABLE_NAME = 'cyber'
@@ -62,73 +63,72 @@ DEFAULT_SYSTEM_INSTRUCTION = """You are an AI assistant specialized in cybersecu
 
 Your response should be informative, actionable, and directly relevant to the specific query and the data provided. Focus on giving insights and recommendations that are most pertinent to the user's question."""
 
-@trace(name="query_similar_records")
 def query_similar_records(query_text, k=5):
-    trace.add_metadata({"data_source": "Neon Database"})
-    embeddings = OpenAIEmbeddings(
-        openai_api_key=OPENAI_API_KEY,
-        model=EMBEDDING_MODEL
-    )
-    query_embedding = embeddings.embed_query(query_text)
-    try:
-        conn = psycopg2.connect(NEON_DB_URL)
-        cur = conn.cursor()
+    with langsmith_client.trace("query_similar_records", project_name=LANGCHAIN_PROJECT) as trace:
+        trace.add_metadata({"data_source": "Neon Database"})
+        embeddings = OpenAIEmbeddings(
+            openai_api_key=OPENAI_API_KEY,
+            model=EMBEDDING_MODEL
+        )
+        query_embedding = embeddings.embed_query(query_text)
         try:
-            # Ensure the vector extension is available
-            cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
-            conn.commit()
-            
-            cur.execute(f"""
-            SELECT * FROM {TABLE_NAME}
-            ORDER BY embedding <=> %s::vector
-            LIMIT %s
-            """, (query_embedding, k))
-            results = cur.fetchall()
-            columns = [desc[0] for desc in cur.description]
-            return [dict(zip(columns, row)) for row in results]
-        except Exception as e:
-            st.error(f"An error occurred during database query: {e}")
+            conn = psycopg2.connect(NEON_DB_URL)
+            cur = conn.cursor()
+            try:
+                # Ensure the vector extension is available
+                cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+                conn.commit()
+                
+                cur.execute(f"""
+                SELECT * FROM {TABLE_NAME}
+                ORDER BY embedding <=> %s::vector
+                LIMIT %s
+                """, (query_embedding, k))
+                results = cur.fetchall()
+                columns = [desc[0] for desc in cur.description]
+                return [dict(zip(columns, row)) for row in results]
+            except Exception as e:
+                st.error(f"An error occurred during database query: {e}")
+                return []
+            finally:
+                cur.close()
+        except psycopg2.OperationalError as e:
+            st.error(f"Unable to connect to the Neon database. Error: {e}")
             return []
         finally:
-            cur.close()
-    except psycopg2.OperationalError as e:
-        st.error(f"Unable to connect to the Neon database. Error: {e}")
-        return []
-    finally:
-        if 'conn' in locals():
-            conn.close()
+            if 'conn' in locals():
+                conn.close()
 
-@trace(name="process_query")
 def process_query(query, similar_records, system_instruction):
-    trace.add_metadata({"query_type": "cybersecurity_incident"})
-    llm = ChatOpenAI(openai_api_key=OPENAI_API_KEY, model_name="gpt-4o-mini")
-    
-    template = ChatPromptTemplate.from_messages([
-        ("system", system_instruction),
-        ("human", """
-        Query: {query}
+    with langsmith_client.trace("process_query", project_name=LANGCHAIN_PROJECT) as trace:
+        trace.add_metadata({"query_type": "cybersecurity_incident"})
+        llm = ChatOpenAI(openai_api_key=OPENAI_API_KEY, model_name="gpt-4o-mini")
+        
+        template = ChatPromptTemplate.from_messages([
+            ("system", system_instruction),
+            ("human", """
+            Query: {query}
 
-        Related Records:
-        {records}
+            Related Records:
+            {records}
 
-        Please provide a detailed analysis and recommendations based on all this information, 
-        following the guidelines provided in the system instructions.
-        """)
-    ])
+            Please provide a detailed analysis and recommendations based on all this information, 
+            following the guidelines provided in the system instructions.
+            """)
+        ])
 
-    chain = LLMChain(llm=llm, prompt=template)
-    
-    records_text = ""
-    for record in similar_records:
-        records_text += "Record:\n"
-        for col in ALL_COLUMNS:
-            if col in record and record[col]:
-                records_text += f"{col}: {record[col]}\n"
-        records_text += "\n"
+        chain = LLMChain(llm=llm, prompt=template)
+        
+        records_text = ""
+        for record in similar_records:
+            records_text += "Record:\n"
+            for col in ALL_COLUMNS:
+                if col in record and record[col]:
+                    records_text += f"{col}: {record[col]}\n"
+            records_text += "\n"
 
-    response = chain.run(query=query, records=records_text)
-    return response
-
+        response = chain.run(query=query, records=records_text)
+        return response
 def main():
     st.title("Cybersecurity Incident Query System")
 
