@@ -61,9 +61,10 @@ DEFAULT_SYSTEM_INSTRUCTION = """You are an AI assistant specialized in cybersecu
 
 Your response should be informative, actionable, and directly relevant to the specific query and the data provided. Focus on giving insights and recommendations that are most pertinent to the user's question."""
 
-@trace(name="query_similar_records", project_name=LANGCHAIN_PROJECT)
+
+@langsmith_trace(name="query_similar_records", project_name=LANGCHAIN_PROJECT)
 def query_similar_records(query_text, k=5):
-    trace.add_metadata({"data_source": "Neon Database"})
+    langsmith_trace.add_metadata({"data_source": "Neon Database"})
     embeddings = OpenAIEmbeddings(
         openai_api_key=OPENAI_API_KEY,
         model=EMBEDDING_MODEL
@@ -97,9 +98,9 @@ def query_similar_records(query_text, k=5):
         if 'conn' in locals():
             conn.close()
 
-@trace(name="process_query", project_name=LANGCHAIN_PROJECT)
+@langsmith_trace(name="process_query", project_name=LANGCHAIN_PROJECT)
 def process_query(query, similar_records, system_instruction):
-    trace.add_metadata({"query_type": "cybersecurity_incident"})
+    langsmith_trace.add_metadata({"query_type": "cybersecurity_incident"})
     llm = ChatOpenAI(openai_api_key=OPENAI_API_KEY, model_name="gpt-4o-mini")
     
     template = ChatPromptTemplate.from_messages([
@@ -162,7 +163,7 @@ def main():
 
     if query:  # Process query as soon as it's entered
         with st.spinner("Processing your query..."):
-            with trace(name="main_query_processing", project_name=LANGCHAIN_PROJECT):
+            with langsmith_trace(name="main_query_processing", project_name=LANGCHAIN_PROJECT):
                 similar_records = query_similar_records(query)
                 
                 if similar_records:
