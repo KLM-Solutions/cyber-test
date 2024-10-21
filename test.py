@@ -163,7 +163,7 @@ def main():
                 # Store the JSON result in session state
                 st.session_state.json_result = json.dumps(result)
             
-                )
+                
             else:
                 result = {"query": query, "response": "No relevant information found."}
                 st.subheader("Query Result (JSON Format):")
