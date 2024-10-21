@@ -5,9 +5,9 @@ from langchain.prompts import ChatPromptTemplate
 from langchain.chains import LLMChain
 import psycopg2
 import traceback 
+import json
 
 OPENAI_API_KEY = st.secrets["openai"]["api_key"]
-# Neon database connection string
 NEON_DB_URL = st.secrets["neon"]["database_url"]
 
 TABLE_NAME = 'cyber'
@@ -31,14 +31,10 @@ ALL_COLUMNS = [
     "oldEventDate", "org_event_name"
 ]
 
-# Update the DEFAULT_SYSTEM_INSTRUCTION variable as follows:
-
 DEFAULT_SYSTEM_INSTRUCTION = """You are an AI assistant specialized in cybersecurity incident analysis. Your task is to analyze the given query and related cybersecurity data, and provide a focused, relevant response. Follow these guidelines:
 
 1. Analyze the user's query carefully to understand the specific cybersecurity concern or question.
-
 2. Search through all provided data columns to find information relevant to the query.
-
 3. Use the following analysis framework as appropriate to the query:
    - Threat Assessment: Identify and assess potential threats or security issues.
    - Incident Analysis: Analyze relevant incidents, looking for patterns or connections.
@@ -47,17 +43,12 @@ DEFAULT_SYSTEM_INSTRUCTION = """You are an AI assistant specialized in cybersecu
    - User and System Involvement: Assess involvement of users, systems, or networks as pertinent to the query.
    - Data Source Evaluation: Consider the reliability and relevance of data sources if this impacts the analysis.
    - Compliance and Policy: Mention compliance issues or policy violations only if directly relevant.
-
-4. Provide actionable recommendations  to the query and the data found.
-
+4. Provide actionable recommendations to the query and the data found.
 5. Structure your response to directly address the user's query, using only the most relevant parts of the analysis framework.
-
 6. Be concise and to the point. Do not list out or explicitly mention these guidelines in your response.
-
 7. If certain aspects of the analysis are not relevant to the query, omit them from your response.
 
 Your response should be informative, actionable, and directly relevant to the specific query and the data provided. Focus on giving insights and recommendations that are most pertinent to the user's question."""
-
 
 def query_similar_records(query_text, k=5):
     embeddings = OpenAIEmbeddings(
@@ -69,7 +60,6 @@ def query_similar_records(query_text, k=5):
         conn = psycopg2.connect(NEON_DB_URL)
         cur = conn.cursor()
         try:
-            # Ensure the vector extension is available
             cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
             conn.commit()
             
@@ -92,6 +82,7 @@ def query_similar_records(query_text, k=5):
     finally:
         if 'conn' in locals():
             conn.close()
+
 def process_query(query, similar_records, system_instruction):
     llm = ChatOpenAI(openai_api_key=OPENAI_API_KEY, model_name="gpt-4o-mini")
     
@@ -144,7 +135,6 @@ def main():
                 st.session_state.system_instruction = custom_instruction
                 st.success("System instructions updated successfully!")
 
-        # Display whether custom instructions are in use
         if 'system_instruction' in st.session_state and st.session_state.system_instruction != DEFAULT_SYSTEM_INSTRUCTION:
             st.info("Custom instructions are currently in use.")
         else:
@@ -157,15 +147,28 @@ def main():
         with st.spinner("Processing your query..."):
             similar_records = query_similar_records(query)
             
-            
-            
             if similar_records:
                 response = process_query(query, similar_records, st.session_state.get('system_instruction', DEFAULT_SYSTEM_INSTRUCTION))
                 
-                st.subheader("Analysis and Recommendations:")
-                st.write(response)
+                # Store the response in a variable (not displayed)
+                result = {
+                    "query": query,
+                    "response": response
+                }
+                
+                # Display only the JSON format of the response
+                st.subheader("Query Result (JSON Format):")
+                st.json(result)
+                
+                # Store the JSON result in session state
+                st.session_state.json_result = json.dumps(result)
+            
+                )
             else:
-                st.warning("No relevant information found for the given query.")
+                result = {"query": query, "response": "No relevant information found."}
+                st.subheader("Query Result (JSON Format):")
+                st.json(result)
+                st.session_state.json_result = json.dumps(result)
 
 if __name__ == "__main__":
     main()
