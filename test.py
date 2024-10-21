@@ -6,7 +6,13 @@ from langchain.chains import LLMChain
 import psycopg2
 import traceback 
 import json
+import logging
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Constants and configurations
 OPENAI_API_KEY = st.secrets["openai"]["api_key"]
 NEON_DB_URL = st.secrets["neon"]["database_url"]
 
@@ -73,7 +79,7 @@ Your response should be informative, actionable, and directly relevant to the sp
 
 def query_similar_records(query_text, k=5):
     embeddings = OpenAIEmbeddings(
-        openai_api_key=st.secrets["openai"]["api_key"],
+        openai_api_key=OPENAI_API_KEY,
         model=EMBEDDING_MODEL
     )
     query_embedding = embeddings.embed_query(query_text)
@@ -93,11 +99,13 @@ def query_similar_records(query_text, k=5):
             columns = [desc[0] for desc in cur.description]
             return [dict(zip(columns, row)) for row in results]
         except Exception as e:
+            logger.error(f"Database query error: {e}")
             st.error(f"An error occurred during database query: {e}")
             return []
         finally:
             cur.close()
     except psycopg2.OperationalError as e:
+        logger.error(f"Database connection error: {e}")
         st.error(f"Unable to connect to the Neon database. Error: {e}")
         return []
     finally:
@@ -130,8 +138,22 @@ def process_query(query, similar_records, system_instruction):
                 records_text += f"{col}: {record[col]}\n"
         records_text += "\n"
 
-    response = chain.run(query=query, records=records_text)
-    return json.loads(response)  # Parse the JSON response
+    try:
+        # Input validation
+        if not query or not records_text:
+            raise ValueError("Missing query or records data")
+
+        response = chain.run(query=query, records=records_text)
+        return json.loads(response)  # Parse the JSON response
+    except json.JSONDecodeError:
+        logger.error("Failed to parse LLM response as JSON")
+        return {"error": "Failed to parse response. Please try again."}
+    except ValueError as e:
+        logger.error(f"Value error in processing query: {e}")
+        return {"error": f"Error processing query: {e}"}
+    except Exception as e:
+        logger.error(f"Unexpected error in processing query: {e}")
+        return {"error": "An unexpected error occurred. Please try again."}
 
 def main():
     st.title("Cybersecurity Incident Query System")
@@ -169,8 +191,11 @@ def main():
             if similar_records:
                 response = process_query(query, similar_records, st.session_state.get('system_instruction', DEFAULT_SYSTEM_INSTRUCTION))
                 
-                st.subheader("Analysis and Recommendations:")
-                st.json(response)  # Display the JSON response
+                if "error" in response:
+                    st.error(response["error"])
+                else:
+                    st.subheader("Analysis and Recommendations:")
+                    st.json(response)  # Display the JSON response
             else:
                 st.warning("No relevant information found for the given query.")
 
