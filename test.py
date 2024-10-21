@@ -5,20 +5,15 @@ from langchain.prompts import ChatPromptTemplate
 from langchain.chains import LLMChain
 import psycopg2
 import traceback 
-import json
-import logging
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Constants and configurations
 OPENAI_API_KEY = st.secrets["openai"]["api_key"]
+# Neon database connection string
 NEON_DB_URL = st.secrets["neon"]["database_url"]
 
 TABLE_NAME = 'cyber'
 EMBEDDING_MODEL = "text-embedding-ada-002"
 
+# List of all columns
 ALL_COLUMNS = [
     "ID", "eventDtgTime", "alerts", "displayTitle", "instantAnalytics", "detailedText", 
     "msgPrecs", "unit", "size", "embedHtml", "dataSources", "snippetText", "contentLink", 
@@ -36,7 +31,9 @@ ALL_COLUMNS = [
     "oldEventDate", "org_event_name"
 ]
 
-DEFAULT_SYSTEM_INSTRUCTION = """You are an AI assistant specialized in cybersecurity incident analysis. Your task is to analyze the given query and related cybersecurity data, and provide a focused, relevant response in JSON format. Follow these guidelines:
+# Update the DEFAULT_SYSTEM_INSTRUCTION variable as follows:
+
+DEFAULT_SYSTEM_INSTRUCTION = """You are an AI assistant specialized in cybersecurity incident analysis. Your task is to analyze the given query and related cybersecurity data, and provide a focused, relevant response. Follow these guidelines:
 
 1. Analyze the user's query carefully to understand the specific cybersecurity concern or question.
 
@@ -51,7 +48,7 @@ DEFAULT_SYSTEM_INSTRUCTION = """You are an AI assistant specialized in cybersecu
    - Data Source Evaluation: Consider the reliability and relevance of data sources if this impacts the analysis.
    - Compliance and Policy: Mention compliance issues or policy violations only if directly relevant.
 
-4. Provide actionable recommendations related to the query and the data found.
+4. Provide actionable recommendations  to the query and the data found.
 
 5. Structure your response to directly address the user's query, using only the most relevant parts of the analysis framework.
 
@@ -59,27 +56,12 @@ DEFAULT_SYSTEM_INSTRUCTION = """You are an AI assistant specialized in cybersecu
 
 7. If certain aspects of the analysis are not relevant to the query, omit them from your response.
 
-8. Format your response as a JSON object with the following structure:
-   {
-     "analysis": {
-       "threat_assessment": "...",
-       "incident_analysis": "...",
-       "temporal_analysis": "...",
-       "geographical_considerations": "...",
-       "user_system_involvement": "...",
-       "data_source_evaluation": "..."
-     },
-     "recommendations": [
-       "...",
-       "..."
-     ]
-   }
-
 Your response should be informative, actionable, and directly relevant to the specific query and the data provided. Focus on giving insights and recommendations that are most pertinent to the user's question."""
+
 
 def query_similar_records(query_text, k=5):
     embeddings = OpenAIEmbeddings(
-        openai_api_key=OPENAI_API_KEY,
+        openai_api_key=st.secrets["openai"]["api_key"],
         model=EMBEDDING_MODEL
     )
     query_embedding = embeddings.embed_query(query_text)
@@ -87,6 +69,7 @@ def query_similar_records(query_text, k=5):
         conn = psycopg2.connect(NEON_DB_URL)
         cur = conn.cursor()
         try:
+            # Ensure the vector extension is available
             cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
             conn.commit()
             
@@ -99,19 +82,16 @@ def query_similar_records(query_text, k=5):
             columns = [desc[0] for desc in cur.description]
             return [dict(zip(columns, row)) for row in results]
         except Exception as e:
-            logger.error(f"Database query error: {e}")
             st.error(f"An error occurred during database query: {e}")
             return []
         finally:
             cur.close()
     except psycopg2.OperationalError as e:
-        logger.error(f"Database connection error: {e}")
         st.error(f"Unable to connect to the Neon database. Error: {e}")
         return []
     finally:
         if 'conn' in locals():
             conn.close()
-
 def process_query(query, similar_records, system_instruction):
     llm = ChatOpenAI(openai_api_key=OPENAI_API_KEY, model_name="gpt-4o-mini")
     
@@ -124,7 +104,7 @@ def process_query(query, similar_records, system_instruction):
         {records}
 
         Please provide a detailed analysis and recommendations based on all this information, 
-        following the guidelines provided in the system instructions. Ensure your response is in valid JSON format.
+        following the guidelines provided in the system instructions.
         """)
     ])
 
@@ -138,26 +118,13 @@ def process_query(query, similar_records, system_instruction):
                 records_text += f"{col}: {record[col]}\n"
         records_text += "\n"
 
-    try:
-        # Input validation
-        if not query or not records_text:
-            raise ValueError("Missing query or records data")
-
-        response = chain.run(query=query, records=records_text)
-        return json.loads(response)  # Parse the JSON response
-    except json.JSONDecodeError:
-        logger.error("Failed to parse LLM response as JSON")
-        return {"error": "Failed to parse response. Please try again."}
-    except ValueError as e:
-        logger.error(f"Value error in processing query: {e}")
-        return {"error": f"Error processing query: {e}"}
-    except Exception as e:
-        logger.error(f"Unexpected error in processing query: {e}")
-        return {"error": "An unexpected error occurred. Please try again."}
+    response = chain.run(query=query, records=records_text)
+    return response
 
 def main():
     st.title("Cybersecurity Incident Query System")
 
+    # Sidebar for system instructions
     with st.sidebar:
         st.subheader("System Instructions")
         if st.button("View/Edit Instructions"):
@@ -177,25 +144,26 @@ def main():
                 st.session_state.system_instruction = custom_instruction
                 st.success("System instructions updated successfully!")
 
+        # Display whether custom instructions are in use
         if 'system_instruction' in st.session_state and st.session_state.system_instruction != DEFAULT_SYSTEM_INSTRUCTION:
             st.info("Custom instructions are currently in use.")
         else:
             st.info("Default instructions are in use.")
 
+    # Main area for query input and results
     query = st.text_input("Enter your cybersecurity query:")
 
-    if query:
+    if query:  # Process query as soon as it's entered
         with st.spinner("Processing your query..."):
             similar_records = query_similar_records(query)
+            
+            
             
             if similar_records:
                 response = process_query(query, similar_records, st.session_state.get('system_instruction', DEFAULT_SYSTEM_INSTRUCTION))
                 
-                if "error" in response:
-                    st.error(response["error"])
-                else:
-                    st.subheader("Analysis and Recommendations:")
-                    st.json(response)  # Display the JSON response
+                st.subheader("Analysis and Recommendations:")
+                st.write(response)
             else:
                 st.warning("No relevant information found for the given query.")
 
